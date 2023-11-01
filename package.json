@@ -7,5 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Scott Trinh <scott@scotttrinh.com>",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "edgedb": "^1.4.0"
+  }
 }
