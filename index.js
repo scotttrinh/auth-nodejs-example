@@ -104,6 +104,7 @@ const handleCallback = async (req, res) => {
   const { auth_token } = await codeExchangeResponse.json();
   res.setHeader("Set-Cookie", `edgedb-auth-token=${auth_token}; HttpOnly`);
   res.status(203);
+  res.end();
 };
 
 /**
@@ -131,18 +132,12 @@ const handleSignUp = async (req, res) => {
     }),
   });
 
-  const { code } = await registerResponse.json();
-
-  const tokenUrl = new URL("token", EDGEDB_AUTH_BASE_URL);
-  tokenUrl.searchParams.set("code", code);
-  tokenUrl.searchParams.set("verifier", pkce.verifier);
-  const tokenResponse = await fetch(tokenUrl.href, {
-    method: "get",
-  });
-
-  const { auth_token } = await tokenResponse.json();
-  res.setHeader("Set-Cookie", `edgedb-auth-token=${auth_token}; HttpOnly`);
+  res.setHeader(
+    "Set-Cookie",
+    `edgedb-pkce-verifier=${pkce.verifier}; HttpOnly`
+  );
   res.status(203);
+  res.end();
 };
 
 /**
@@ -181,6 +176,7 @@ const handleSignIn = async (req, res) => {
   const { auth_token } = await tokenResponse.json();
   res.setHeader("Set-Cookie", `edgedb-auth-token=${auth_token}; HttpOnly`);
   res.status(203);
+  res.end();
 };
 
 /**
@@ -198,7 +194,7 @@ const handleVerify = async (req, res) => {
     .split("=")[1];
 
   const tokenUrl = new URL("token", EDGEDB_AUTH_BASE_URL);
-  tokenUrl.searchParams.set("verification_token", verification_token);
+  tokenUrl.searchParams.set("verification_token", verificationToken);
   tokenUrl.searchParams.set("verifier", verifier);
   const tokenResponse = await fetch(tokenUrl.href, {
     method: "get",
@@ -207,6 +203,7 @@ const handleVerify = async (req, res) => {
   const { auth_token } = await tokenResponse.json();
   res.setHeader("Set-Cookie", `edgedb-auth-token=${auth_token}; HttpOnly`);
   res.status(203);
+  res.end();
 }
 
 server.listen(PORT, () => {
