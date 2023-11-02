@@ -2,6 +2,7 @@
   "name": "auth-nodejs-example",
   "version": "1.0.0",
   "description": "",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -10,5 +11,8 @@
   "license": "MIT",
   "dependencies": {
     "edgedb": "^1.4.0"
+  },
+  "devDependencies": {
+    "prettier": "^3.0.3"
   }
 }
