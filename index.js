@@ -16,6 +16,11 @@ const generatePKCE = () => {
   return { verifier, challenge };
 };
 
+const getRequestUrl = (req) => {
+  const protocol = req.connection.encrypted ? "https" : "http";
+  return new URL(req.url, `${protocol}://${req.headers.host}`);
+}
+
 const server = http.createServer(async (req, res) => {
   switch (req.url) {
     case "/auth/authorize": {
@@ -60,24 +65,20 @@ const server = http.createServer(async (req, res) => {
  * @param {Response} res
  */
 const handleAuthorize = async (req, res) => {
-  const pkce = generatePKCE();
-  res.setHeader(
-    "Set-Cookie",
-    `edgedb-pkce-verifier=${pkce.verifier}; HttpOnly`
-  );
-
-  const requestUrl = new URL(req.url);
+  const requestUrl = getRequestUrl(req);
   const provider = requestUrl.searchParams.get("provider");
 
+  const pkce = generatePKCE();
   const redirectUrl = new URL("authorize", EDGEDB_AUTH_BASE_URL);
   redirectUrl.searchParams.set("provider", provider);
-  redirectUrl.searchParams.set("challenge", challenge);
+  redirectUrl.searchParams.set("challenge", pkce.challenge);
   redirectUrl.searchParams.set(
     "redirect_to",
     `http://localhost:{PORT}/auth/callack`
   );
 
   res.writeHead(301, {
+    "Set-Cookie": `edgedb-pkce-verifier=${pkce.verifier}; HttpOnly`,
     Location: redirectUrl.href,
   });
   res.end();
@@ -91,7 +92,7 @@ const handleAuthorize = async (req, res) => {
  * @param {Response} res
  */
 const handleCallback = async (req, res) => {
-  const requestUrl = new URL(req.url);
+  const requestUrl = getRequestUrl(req);
 
   const code = requestUrl.searchParams.get("code");
   const cookies = req.headers.get("cookies")?.split("; ");
@@ -119,31 +120,44 @@ const handleCallback = async (req, res) => {
  * @param {Request} req
  * @param {Response} res
  */
-const handleSignUp = async (req, res) => {
-  const pkce = generatePKCE();
-  const { email, password, provider } = await req.json();
-
-  const registerUrl = new URL("register", EDGEDB_AUTH_BASE_URL);
-  const registerResponse = await fetch(registerUrl.href, {
-    method: "post",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      challenge: pkce.challenge,
-      email,
-      password,
-      provider,
-      verify_url: `http://localhost:${PORT}/auth/verify`,
-    }),
+const handleSignUp = (req, res) => {
+  let body = "";
+  req.on("data", (chunk) => {
+    body += chunk.toString();
   });
+  req.on("end", async () => {
+    const pkce = generatePKCE();
+    const { email, password, provider } = JSON.parse(body);
 
-  res.writeHead(203, {
-    "Set-Cookie": `edgedb-auth-token=${auth_token}; HttpOnly`,
+    const registerUrl = new URL("register", EDGEDB_AUTH_BASE_URL);
+    const registerResponse = await fetch(registerUrl.href, {
+      method: "post",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        challenge: pkce.challenge,
+        email,
+        password,
+        provider,
+        verify_url: `http://localhost:${PORT}/auth/verify`,
+      }),
+    });
+
+    if (!registerResponse.ok) {
+      const text = await registerResponse.text();
+      console.log(`Body: ${text}`);
+      res.status = 400;
+      res.end(`Error from the auth server: ${text}`);
+      return;
+    }
+
+    res.writeHead(203, {
+      "Set-Cookie": `edgedb-pkce-verifier=${pkce.verifier}; HttpOnly`,
+    });
+    res.end();
   });
-  res.end();
 };
-
 /**
  * Handles sign in with email and password.
  *
@@ -151,37 +165,43 @@ const handleSignUp = async (req, res) => {
  * @param {Response} res
  */
 const handleSignIn = async (req, res) => {
-  const pkce = generatePKCE();
-  const { email, password, provider } = await req.json();
-
-  const authenticateUrl = new URL("authenticate", EDGEDB_AUTH_BASE_URL);
-  const authenticateResponse = await fetch(authenticateUrl.href, {
-    method: "post",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      challenge: pkce.challenge,
-      email,
-      password,
-      provider,
-    }),
+  const body = "";
+  req.on("data", (chunk) => {
+    body += chunk.toString();
   });
+  req.on("end", async () => {
+    const pkce = generatePKCE();
+    const { email, password, provider } = await req.json();
 
-  const { code } = await authenticateResponse.json();
+    const authenticateUrl = new URL("authenticate", EDGEDB_AUTH_BASE_URL);
+    const authenticateResponse = await fetch(authenticateUrl.href, {
+      method: "post",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        challenge: pkce.challenge,
+        email,
+        password,
+        provider,
+      }),
+    });
 
-  const tokenUrl = new URL("token", EDGEDB_AUTH_BASE_URL);
-  tokenUrl.searchParams.set("code", code);
-  tokenUrl.searchParams.set("verifier", pkce.verifier);
-  const tokenResponse = await fetch(tokenUrl.href, {
-    method: "get",
+    const { code } = await authenticateResponse.json();
+
+    const tokenUrl = new URL("token", EDGEDB_AUTH_BASE_URL);
+    tokenUrl.searchParams.set("code", code);
+    tokenUrl.searchParams.set("verifier", pkce.verifier);
+    const tokenResponse = await fetch(tokenUrl.href, {
+      method: "get",
+    });
+
+    const { auth_token } = await tokenResponse.json();
+    res.writeHead(203, {
+      "Set-Cookie": `edgedb-auth-token=${auth_token}; HttpOnly`,
+    });
+    res.end();
   });
-
-  const { auth_token } = await tokenResponse.json();
-  res.writeHead(203, {
-    "Set-Cookie": `edgedb-auth-token=${auth_token}; HttpOnly`,
-  });
-  res.end();
 };
 
 /**
@@ -191,7 +211,7 @@ const handleSignIn = async (req, res) => {
  * @param {Response} res
  */
 const handleVerify = async (req, res) => {
-  const requestUrl = new URL(req.url);
+  const requestUrl = getRequestUrl(req);
   const verificationToken = requestUrl.searchParams.get("verification_token");
   const cookies = req.headers.get("cookies")?.split("; ");
   const verifier = cookies
