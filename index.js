@@ -165,13 +165,13 @@ const handleSignUp = async (req, res) => {
  * @param {Response} res
  */
 const handleSignIn = async (req, res) => {
-  const body = "";
+  let body = "";
   req.on("data", (chunk) => {
     body += chunk.toString();
   });
   req.on("end", async () => {
     const pkce = generatePKCE();
-    const { email, password, provider } = await req.json();
+    const { email, password, provider } = JSON.parse(body);
 
     const authenticateUrl = new URL("authenticate", EDGEDB_AUTH_BASE_URL);
     const authenticateResponse = await fetch(authenticateUrl.href, {
