@@ -215,21 +215,27 @@ const handleVerify = async (req, res) => {
   const requestUrl = getRequestUrl(req);
   const verificationToken = requestUrl.searchParams.get("verification_token");
   const cookies = req.headers.cookie?.split("; ");
-  console.log({
-    rawCookies: req.headers.cookie,
-    cookies,
-  });
   const verifier = cookies
     .find((cookie) => cookie.startsWith("edgedb-pkce-verifier="))
     .split("=")[1];
 
+  const verifyUrl = new URL("verify", EDGEDB_AUTH_BASE_URL);
+  verifyUrl.searchParams.set("verification_token", verificationToken);
+  verifyUrl.searchParams.set("verifier", verifier);
+  const verifyResponse = await fetch(verifyUrl.href, {
+    method: "get",
+  });
+
+  const { code } = await verifyResponse.json();
+
   const tokenUrl = new URL("token", EDGEDB_AUTH_BASE_URL);
-  tokenUrl.searchParams.set("verification_token", verificationToken);
+  tokenUrl.searchParams.set("code", code);
   tokenUrl.searchParams.set("verifier", verifier);
   const tokenResponse = await fetch(tokenUrl.href, {
     method: "get",
   });
-
+  const clone = tokenResponse.clone();
+  console.log(`tokenResponse=${await clone.text()}`);
   const { auth_token } = await tokenResponse.json();
   res.writeHead(204, {
     "Set-Cookie": `edgedb-auth-token=${auth_token}; HttpOnly`,
