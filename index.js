@@ -147,7 +147,6 @@ const handleSignUp = async (req, res) => {
 
     if (!registerResponse.ok) {
       const text = await registerResponse.text();
-      console.log(`Body: ${text}`);
       res.status = 400;
       res.end(`Error from the auth server: ${text}`);
       return;
@@ -213,17 +212,23 @@ const handleSignIn = async (req, res) => {
  */
 const handleVerify = async (req, res) => {
   const requestUrl = getRequestUrl(req);
-  const verificationToken = requestUrl.searchParams.get("verification_token");
+  const verification_token = requestUrl.searchParams.get("verification_token");
   const cookies = req.headers.cookie?.split("; ");
   const verifier = cookies
     .find((cookie) => cookie.startsWith("edgedb-pkce-verifier="))
     .split("=")[1];
 
   const verifyUrl = new URL("verify", EDGEDB_AUTH_BASE_URL);
-  verifyUrl.searchParams.set("verification_token", verificationToken);
-  verifyUrl.searchParams.set("verifier", verifier);
   const verifyResponse = await fetch(verifyUrl.href, {
-    method: "get",
+    method: "post",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      verification_token,
+      verifier,
+      provider: "builtin::local_emailpassword",
+    }),
   });
 
   const { code } = await verifyResponse.json();
@@ -234,8 +239,6 @@ const handleVerify = async (req, res) => {
   const tokenResponse = await fetch(tokenUrl.href, {
     method: "get",
   });
-  const clone = tokenResponse.clone();
-  console.log(`tokenResponse=${await clone.text()}`);
   const { auth_token } = await tokenResponse.json();
   res.writeHead(204, {
     "Set-Cookie": `edgedb-auth-token=${auth_token}; HttpOnly`,
