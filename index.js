@@ -69,6 +69,12 @@ const handleAuthorize = async (req, res) => {
   const requestUrl = getRequestUrl(req);
   const provider = requestUrl.searchParams.get("provider");
 
+  if (!provider) {
+    res.status = 400;
+    res.end("Must provider a 'provider' value in search parameters");
+    return;
+  }
+
   const pkce = generatePKCE();
   const redirectUrl = new URL("authorize", EDGEDB_AUTH_BASE_URL);
   redirectUrl.searchParams.set("provider", provider);
@@ -96,10 +102,26 @@ const handleCallback = async (req, res) => {
   const requestUrl = getRequestUrl(req);
 
   const code = requestUrl.searchParams.get("code");
+  if (!code) {
+    const error = requestUrl.searchParams.get("error");
+    res.status = 400;
+    res.end(
+      `OAuth callback is missing 'code'. OAuth provider responded with error: ${error}`
+    );
+    return;
+  }
+
   const cookies = req.headers.get("cookies")?.split("; ");
   const verifier = cookies
     .find((cookie) => cookie.startsWith("edgedb-pkce-verifier="))
-    .split("=")[1];
+    ?.split("=")[1];
+  if (!verifier) {
+    res.status = 400;
+    res.end(
+      `Could not find 'verifier' in the cookie store. Is this the same user agent/browser that started the authorization flow?`
+    );
+    return;
+  }
 
   const codeExchangeUrl = new URL("token", EDGEDB_AUTH_BASE_URL);
   codeExchangeUrl.searchParams.set("code", code);
@@ -107,6 +129,13 @@ const handleCallback = async (req, res) => {
   const codeExchangeResponse = await fetch(codeExchangeUrl.href, {
     method: "GET",
   });
+
+  if (!codeExchangeResponse.ok) {
+    const text = await codeExchangeResponse.text();
+    res.status = 400;
+    res.end(`Error from the auth server: ${text}`);
+    return;
+  }
 
   const { auth_token } = await codeExchangeResponse.json();
   res.writeHead(204, {
@@ -129,6 +158,13 @@ const handleSignUp = async (req, res) => {
   req.on("end", async () => {
     const pkce = generatePKCE();
     const { email, password, provider } = JSON.parse(body);
+    if (!email || !password || !provider) {
+      res.status = 400;
+      res.end(
+        `Request body malformed. Expected JSON body with 'email', 'password', and 'provider' keys, but got: ${body}`
+      );
+      return;
+    }
 
     const registerUrl = new URL("register", EDGEDB_AUTH_BASE_URL);
     const registerResponse = await fetch(registerUrl.href, {
@@ -172,6 +208,13 @@ const handleSignIn = async (req, res) => {
   req.on("end", async () => {
     const pkce = generatePKCE();
     const { email, password, provider } = JSON.parse(body);
+    if (!email || !password || !provider) {
+      res.status = 400;
+      res.end(
+        `Request body malformed. Expected JSON body with 'email', 'password', and 'provider' keys, but got: ${body}`
+      );
+      return;
+    }
 
     const authenticateUrl = new URL("authenticate", EDGEDB_AUTH_BASE_URL);
     const authenticateResponse = await fetch(authenticateUrl.href, {
@@ -187,6 +230,13 @@ const handleSignIn = async (req, res) => {
       }),
     });
 
+    if (!authenticateResponse.ok) {
+      const text = await authenticateResponse.text();
+      res.status = 400;
+      res.end(`Error from the auth server: ${text}`);
+      return;
+    }
+
     const { code } = await authenticateResponse.json();
 
     const tokenUrl = new URL("token", EDGEDB_AUTH_BASE_URL);
@@ -195,6 +245,13 @@ const handleSignIn = async (req, res) => {
     const tokenResponse = await fetch(tokenUrl.href, {
       method: "get",
     });
+
+    if (!tokenResponse.ok) {
+      const text = await authenticateResponse.text();
+      res.status = 400;
+      res.end(`Error from the auth server: ${text}`);
+      return;
+    }
 
     const { auth_token } = await tokenResponse.json();
     res.writeHead(204, {
@@ -213,10 +270,25 @@ const handleSignIn = async (req, res) => {
 const handleVerify = async (req, res) => {
   const requestUrl = getRequestUrl(req);
   const verification_token = requestUrl.searchParams.get("verification_token");
+  if (!verification_token) {
+    res.status = 400;
+    res.end(
+      `Verify request is missing 'verification_token' search param. The verification email is malformed.`
+    );
+    return;
+  }
+
   const cookies = req.headers.cookie?.split("; ");
   const verifier = cookies
     .find((cookie) => cookie.startsWith("edgedb-pkce-verifier="))
-    .split("=")[1];
+    ?.split("=")[1];
+  if (!verifier) {
+    res.status = 400;
+    res.end(
+      `Could not find 'verifier' in the cookie store. Is this the same user agent/browser that started the authorization flow?`
+    );
+    return;
+  }
 
   const verifyUrl = new URL("verify", EDGEDB_AUTH_BASE_URL);
   const verifyResponse = await fetch(verifyUrl.href, {
@@ -231,6 +303,13 @@ const handleVerify = async (req, res) => {
     }),
   });
 
+  if (!verifyResponse.ok) {
+    const text = await verifyResponse.text();
+    res.status = 400;
+    res.end(`Error from the auth server: ${text}`);
+    return;
+  }
+
   const { code } = await verifyResponse.json();
 
   const tokenUrl = new URL("token", EDGEDB_AUTH_BASE_URL);
@@ -239,6 +318,14 @@ const handleVerify = async (req, res) => {
   const tokenResponse = await fetch(tokenUrl.href, {
     method: "get",
   });
+
+  if (!tokenResponse.ok) {
+    const text = await authenticateResponse.text();
+    res.status = 400;
+    res.end(`Error from the auth server: ${text}`);
+    return;
+  }
+
   const { auth_token } = await tokenResponse.json();
   res.writeHead(204, {
     "Set-Cookie": `edgedb-auth-token=${auth_token}; HttpOnly`,
