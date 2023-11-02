@@ -17,9 +17,7 @@ const generatePKCE = () => {
 };
 
 const server = http.createServer(async (req, res) => {
-  const route = new URL(req.url);
-
-  switch (route.pathname) {
+  switch (req.url) {
     case "/auth/authorize": {
       await handleAuthorize(req, res);
       break;
@@ -42,6 +40,12 @@ const server = http.createServer(async (req, res) => {
 
     case "/auth/verify": {
       await handleVerify(req, res);
+      break;
+    }
+
+    default: {
+      res.writeHead(404);
+      res.end("Not found");
       break;
     }
   }
@@ -73,8 +77,9 @@ const handleAuthorize = async (req, res) => {
     `http://localhost:{PORT}/auth/callack`
   );
 
-  res.setHeader("Location", redirectUrl.href);
-  res.statusCode = 301;
+  res.writeHead(301, {
+    Location: redirectUrl.href,
+  });
   res.end();
 };
 
@@ -102,8 +107,9 @@ const handleCallback = async (req, res) => {
   });
 
   const { auth_token } = await codeExchangeResponse.json();
-  res.setHeader("Set-Cookie", `edgedb-auth-token=${auth_token}; HttpOnly`);
-  res.status(203);
+  res.writeHead(203, {
+    "Set-Cookie": `edgedb-auth-token=${auth_token}; HttpOnly`,
+  });
   res.end();
 };
 
@@ -132,11 +138,9 @@ const handleSignUp = async (req, res) => {
     }),
   });
 
-  res.setHeader(
-    "Set-Cookie",
-    `edgedb-pkce-verifier=${pkce.verifier}; HttpOnly`
-  );
-  res.status(203);
+  res.writeHead(203, {
+    "Set-Cookie": `edgedb-auth-token=${auth_token}; HttpOnly`,
+  });
   res.end();
 };
 
@@ -174,8 +178,9 @@ const handleSignIn = async (req, res) => {
   });
 
   const { auth_token } = await tokenResponse.json();
-  res.setHeader("Set-Cookie", `edgedb-auth-token=${auth_token}; HttpOnly`);
-  res.status(203);
+  res.writeHead(203, {
+    "Set-Cookie": `edgedb-auth-token=${auth_token}; HttpOnly`,
+  });
   res.end();
 };
 
@@ -201,10 +206,11 @@ const handleVerify = async (req, res) => {
   });
 
   const { auth_token } = await tokenResponse.json();
-  res.setHeader("Set-Cookie", `edgedb-auth-token=${auth_token}; HttpOnly`);
-  res.status(203);
+  res.writeHead(203, {
+    "Set-Cookie": `edgedb-auth-token=${auth_token}; HttpOnly`,
+  });
   res.end();
-}
+};
 
 server.listen(PORT, () => {
   console.log(`HTTP server listening on port ${PORT}...`);
