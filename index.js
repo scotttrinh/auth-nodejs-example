@@ -2,9 +2,20 @@ import http from "node:http";
 import { URL } from "node:url";
 import crypto from "node:crypto";
 
+/**
+ * You can get this value by running `edgedb instance credentials`.
+ * Value should be: `${protocol}://${host}:${port}/db/${database}/ext/auth/
+ */
 const EDGEDB_AUTH_BASE_URL = process.env.EDGEDB_AUTH_BASE_URL;
-const PORT = 3000;
+const SERVER_PORT = 3000;
 
+/**
+ * Generate a random Base64 url-encoded string, and derive a "challenge"
+ * string from that string to use as proof that the request for a token
+ * later is made from the same user agent that made the original request
+ * 
+ * @returns {Object} The verifier and challenge strings
+ */
 const generatePKCE = () => {
   const verifier = crypto.randomBytes(32).toString("base64url");
 
@@ -16,6 +27,18 @@ const generatePKCE = () => {
   return { verifier, challenge };
 };
 
+/**
+ * In Node, the `req.url` is only the `pathname` portion of a URL. In order
+ * to generate a full URL, we need to build the protocol and host from other
+ * parts of the request.
+ *  
+ * One reason we like to use `URL` objects here is to easily parse the
+ * `URLSearchParams` from the request, and rather than do more error prone
+ * string manipulation, we build a `URL`.
+ * 
+ * @param {Request} req 
+ * @returns {URL}
+ */
 const getRequestUrl = (req) => {
   const protocol = req.connection.encrypted ? "https" : "http";
   return new URL(req.url, `${protocol}://${req.headers.host}`);
@@ -177,7 +200,7 @@ const handleSignUp = async (req, res) => {
         email,
         password,
         provider,
-        verify_url: `http://localhost:${PORT}/auth/verify`,
+        verify_url: `http://localhost:${SERVER_PORT}/auth/verify`,
       }),
     });
 
@@ -333,6 +356,6 @@ const handleVerify = async (req, res) => {
   res.end();
 };
 
-server.listen(PORT, () => {
-  console.log(`HTTP server listening on port ${PORT}...`);
+server.listen(SERVER_PORT, () => {
+  console.log(`HTTP server listening on port ${SERVER_PORT}...`);
 });
