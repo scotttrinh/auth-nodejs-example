@@ -39,6 +39,11 @@ const server = http.createServer(async (req, res) => {
       await handleSignIn(req, res);
       break;
     }
+
+    case "/auth/verify": {
+      await handleVerify(req, res);
+      break;
+    }
   }
 });
 
@@ -177,6 +182,32 @@ const handleSignIn = async (req, res) => {
   res.setHeader("Set-Cookie", `edgedb-auth-token=${auth_token}; HttpOnly`);
   res.status(203);
 };
+
+/**
+ * Handles the link in the email verification flow.
+ *
+ * @param {Request} req
+ * @param {Response} res
+ */
+const handleVerify = async (req, res) => {
+  const requestUrl = new URL(req.url);
+  const verificationToken = requestUrl.searchParams.get("verification_token");
+  const cookies = req.headers.get("cookies")?.split("; ");
+  const verifier = cookies
+    .find((cookie) => cookie.startsWith("edgedb-pkce-verifier="))
+    .split("=")[1];
+
+  const tokenUrl = new URL("token", EDGEDB_AUTH_BASE_URL);
+  tokenUrl.searchParams.set("verification_token", verification_token);
+  tokenUrl.searchParams.set("verifier", verifier);
+  const tokenResponse = await fetch(tokenUrl.href, {
+    method: "get",
+  });
+
+  const { auth_token } = await tokenResponse.json();
+  res.setHeader("Set-Cookie", `edgedb-auth-token=${auth_token}; HttpOnly`);
+  res.status(203);
+}
 
 server.listen(PORT, () => {
   console.log(`HTTP server listening on port ${PORT}...`);
