@@ -19,10 +19,11 @@ const generatePKCE = () => {
 const getRequestUrl = (req) => {
   const protocol = req.connection.encrypted ? "https" : "http";
   return new URL(req.url, `${protocol}://${req.headers.host}`);
-}
+};
 
 const server = http.createServer(async (req, res) => {
-  switch (req.url) {
+  const [pathname, search] = req.url.split("?");
+  switch (pathname) {
     case "/auth/authorize": {
       await handleAuthorize(req, res);
       break;
@@ -108,7 +109,7 @@ const handleCallback = async (req, res) => {
   });
 
   const { auth_token } = await codeExchangeResponse.json();
-  res.writeHead(203, {
+  res.writeHead(204, {
     "Set-Cookie": `edgedb-auth-token=${auth_token}; HttpOnly`,
   });
   res.end();
@@ -120,7 +121,7 @@ const handleCallback = async (req, res) => {
  * @param {Request} req
  * @param {Response} res
  */
-const handleSignUp = (req, res) => {
+const handleSignUp = async (req, res) => {
   let body = "";
   req.on("data", (chunk) => {
     body += chunk.toString();
@@ -152,7 +153,7 @@ const handleSignUp = (req, res) => {
       return;
     }
 
-    res.writeHead(203, {
+    res.writeHead(204, {
       "Set-Cookie": `edgedb-pkce-verifier=${pkce.verifier}; HttpOnly`,
     });
     res.end();
@@ -197,7 +198,7 @@ const handleSignIn = async (req, res) => {
     });
 
     const { auth_token } = await tokenResponse.json();
-    res.writeHead(203, {
+    res.writeHead(204, {
       "Set-Cookie": `edgedb-auth-token=${auth_token}; HttpOnly`,
     });
     res.end();
@@ -213,7 +214,11 @@ const handleSignIn = async (req, res) => {
 const handleVerify = async (req, res) => {
   const requestUrl = getRequestUrl(req);
   const verificationToken = requestUrl.searchParams.get("verification_token");
-  const cookies = req.headers.get("cookies")?.split("; ");
+  const cookies = req.headers.cookie?.split("; ");
+  console.log({
+    rawCookies: req.headers.cookie,
+    cookies,
+  });
   const verifier = cookies
     .find((cookie) => cookie.startsWith("edgedb-pkce-verifier="))
     .split("=")[1];
@@ -226,7 +231,7 @@ const handleVerify = async (req, res) => {
   });
 
   const { auth_token } = await tokenResponse.json();
-  res.writeHead(203, {
+  res.writeHead(204, {
     "Set-Cookie": `edgedb-auth-token=${auth_token}; HttpOnly`,
   });
   res.end();
