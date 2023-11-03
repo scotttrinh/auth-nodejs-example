@@ -13,7 +13,7 @@ const SERVER_PORT = 3000;
  * Generate a random Base64 url-encoded string, and derive a "challenge"
  * string from that string to use as proof that the request for a token
  * later is made from the same user agent that made the original request
- * 
+ *
  * @returns {Object} The verifier and challenge strings
  */
 const generatePKCE = () => {
@@ -31,12 +31,12 @@ const generatePKCE = () => {
  * In Node, the `req.url` is only the `pathname` portion of a URL. In order
  * to generate a full URL, we need to build the protocol and host from other
  * parts of the request.
- *  
+ *
  * One reason we like to use `URL` objects here is to easily parse the
  * `URLSearchParams` from the request, and rather than do more error prone
  * string manipulation, we build a `URL`.
- * 
- * @param {Request} req 
+ *
+ * @param {Request} req
  * @returns {URL}
  */
 const getRequestUrl = (req) => {
@@ -45,8 +45,19 @@ const getRequestUrl = (req) => {
 };
 
 const server = http.createServer(async (req, res) => {
-  const [pathname, search] = req.url.split("?");
-  switch (pathname) {
+  const requestUrl = getRequestUrl(req);
+
+  switch (requestUrl.pathname) {
+    case "/auth/ui/signin": {
+      await handleUiSignIn(req, res);
+      break;
+    }
+
+    case "/auth/ui/signup": {
+      await handleUiSignUp(req, res);
+      break;
+    }
+
     case "/auth/authorize": {
       await handleAuthorize(req, res);
       break;
@@ -81,6 +92,46 @@ const server = http.createServer(async (req, res) => {
 });
 
 /**
+ * Redirects browser requests to EdgeDB Auth UI sign in page with the
+ * PKCE challenge, and saves PKCE verifier in an HttpOnly cookie.
+ *
+ * @param {Request} req
+ * @param {Response} res
+ */
+const handleUiSignIn = async (req, res) => {
+  const pkce = generatePKCE();
+
+  const redirectUrl = new URL("ui/signin", EDGEDB_AUTH_BASE_URL);
+  redirectUrl.searchParams.set("challenge", pkce.challenge);
+
+  res.writeHead(301, {
+    "Set-Cookie": `edgedb-pkce-verifier=${pkce.verifier}; Path=/; HttpOnly`,
+    Location: redirectUrl.href,
+  });
+  res.end();
+};
+
+/**
+ * Redirects browser requests to EdgeDB Auth UI sign up page with the
+ * PKCE challenge, and saves PKCE verifier in an HttpOnly cookie.
+ *
+ * @param {Request} req
+ * @param {Response} res
+ */
+const handleUiSignUp = async (req, res) => {
+  const pkce = generatePKCE();
+
+  const redirectUrl = new URL("ui/signup", EDGEDB_AUTH_BASE_URL);
+  redirectUrl.searchParams.set("challenge", pkce.challenge);
+
+  res.writeHead(301, {
+    "Set-Cookie": `edgedb-pkce-verifier=${pkce.verifier}; Path=/; HttpOnly`,
+    Location: redirectUrl.href,
+  });
+  res.end();
+};
+
+/**
  * Redirects OAuth requests to EdgeDB Auth OAuth authorize redirect
  * with the PKCE challenge, and saves PKCE verifier in an HttpOnly
  * cookie for later retrieval.
@@ -104,11 +155,11 @@ const handleAuthorize = async (req, res) => {
   redirectUrl.searchParams.set("challenge", pkce.challenge);
   redirectUrl.searchParams.set(
     "redirect_to",
-    `http://localhost:{PORT}/auth/callack`
+    `http://localhost:{PORT}/auth/callack`,
   );
 
   res.writeHead(301, {
-    "Set-Cookie": `edgedb-pkce-verifier=${pkce.verifier}; HttpOnly`,
+    "Set-Cookie": `edgedb-pkce-verifier=${pkce.verifier}; Path=/; HttpOnly`,
     Location: redirectUrl.href,
   });
   res.end();
@@ -129,19 +180,19 @@ const handleCallback = async (req, res) => {
     const error = requestUrl.searchParams.get("error");
     res.status = 400;
     res.end(
-      `OAuth callback is missing 'code'. OAuth provider responded with error: ${error}`
+      `OAuth callback is missing 'code'. OAuth provider responded with error: ${error}`,
     );
     return;
   }
 
-  const cookies = req.headers.get("cookies")?.split("; ");
+  const cookies = req.headers.cookie?.split("; ");
   const verifier = cookies
     .find((cookie) => cookie.startsWith("edgedb-pkce-verifier="))
     ?.split("=")[1];
   if (!verifier) {
     res.status = 400;
     res.end(
-      `Could not find 'verifier' in the cookie store. Is this the same user agent/browser that started the authorization flow?`
+      `Could not find 'verifier' in the cookie store. Is this the same user agent/browser that started the authorization flow?`,
     );
     return;
   }
@@ -162,7 +213,7 @@ const handleCallback = async (req, res) => {
 
   const { auth_token } = await codeExchangeResponse.json();
   res.writeHead(204, {
-    "Set-Cookie": `edgedb-auth-token=${auth_token}; HttpOnly`,
+    "Set-Cookie": `edgedb-auth-token=${auth_token}; Path=/; HttpOnly`,
   });
   res.end();
 };
@@ -184,7 +235,7 @@ const handleSignUp = async (req, res) => {
     if (!email || !password || !provider) {
       res.status = 400;
       res.end(
-        `Request body malformed. Expected JSON body with 'email', 'password', and 'provider' keys, but got: ${body}`
+        `Request body malformed. Expected JSON body with 'email', 'password', and 'provider' keys, but got: ${body}`,
       );
       return;
     }
@@ -212,7 +263,7 @@ const handleSignUp = async (req, res) => {
     }
 
     res.writeHead(204, {
-      "Set-Cookie": `edgedb-pkce-verifier=${pkce.verifier}; HttpOnly`,
+      "Set-Cookie": `edgedb-pkce-verifier=${pkce.verifier}; Path=/; HttpOnly`,
     });
     res.end();
   });
@@ -234,7 +285,7 @@ const handleSignIn = async (req, res) => {
     if (!email || !password || !provider) {
       res.status = 400;
       res.end(
-        `Request body malformed. Expected JSON body with 'email', 'password', and 'provider' keys, but got: ${body}`
+        `Request body malformed. Expected JSON body with 'email', 'password', and 'provider' keys, but got: ${body}`,
       );
       return;
     }
@@ -278,7 +329,7 @@ const handleSignIn = async (req, res) => {
 
     const { auth_token } = await tokenResponse.json();
     res.writeHead(204, {
-      "Set-Cookie": `edgedb-auth-token=${auth_token}; HttpOnly`,
+      "Set-Cookie": `edgedb-auth-token=${auth_token}; Path=/; HttpOnly`,
     });
     res.end();
   });
@@ -296,7 +347,7 @@ const handleVerify = async (req, res) => {
   if (!verification_token) {
     res.status = 400;
     res.end(
-      `Verify request is missing 'verification_token' search param. The verification email is malformed.`
+      `Verify request is missing 'verification_token' search param. The verification email is malformed.`,
     );
     return;
   }
@@ -308,7 +359,7 @@ const handleVerify = async (req, res) => {
   if (!verifier) {
     res.status = 400;
     res.end(
-      `Could not find 'verifier' in the cookie store. Is this the same user agent/browser that started the authorization flow?`
+      `Could not find 'verifier' in the cookie store. Is this the same user agent/browser that started the authorization flow?`,
     );
     return;
   }
@@ -351,7 +402,7 @@ const handleVerify = async (req, res) => {
 
   const { auth_token } = await tokenResponse.json();
   res.writeHead(204, {
-    "Set-Cookie": `edgedb-auth-token=${auth_token}; HttpOnly`,
+    "Set-Cookie": `edgedb-auth-token=${auth_token}; Path=/; HttpOnly`,
   });
   res.end();
 };
