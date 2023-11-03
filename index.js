@@ -170,7 +170,7 @@ const handleAuthorize = async (req, res) => {
   redirectUrl.searchParams.set("challenge", pkce.challenge);
   redirectUrl.searchParams.set(
     "redirect_to",
-    `http://localhost:${SERVER_PORT}/auth/callback`,
+    `http://localhost:${SERVER_PORT}/auth/callback`
   );
 
   res.writeHead(302, {
@@ -195,7 +195,7 @@ const handleCallback = async (req, res) => {
     const error = requestUrl.searchParams.get("error");
     res.status = 400;
     res.end(
-      `OAuth callback is missing 'code'. OAuth provider responded with error: ${error}`,
+      `OAuth callback is missing 'code'. OAuth provider responded with error: ${error}`
     );
     return;
   }
@@ -207,7 +207,7 @@ const handleCallback = async (req, res) => {
   if (!verifier) {
     res.status = 400;
     res.end(
-      `Could not find 'verifier' in the cookie store. Is this the same user agent/browser that started the authorization flow?`,
+      `Could not find 'verifier' in the cookie store. Is this the same user agent/browser that started the authorization flow?`
     );
     return;
   }
@@ -250,7 +250,7 @@ const handleSignUp = async (req, res) => {
     if (!email || !password || !provider) {
       res.status = 400;
       res.end(
-        `Request body malformed. Expected JSON body with 'email', 'password', and 'provider' keys, but got: ${body}`,
+        `Request body malformed. Expected JSON body with 'email', 'password', and 'provider' keys, but got: ${body}`
       );
       return;
     }
@@ -300,7 +300,7 @@ const handleSignIn = async (req, res) => {
     if (!email || !password || !provider) {
       res.status = 400;
       res.end(
-        `Request body malformed. Expected JSON body with 'email', 'password', and 'provider' keys, but got: ${body}`,
+        `Request body malformed. Expected JSON body with 'email', 'password', and 'provider' keys, but got: ${body}`
       );
       return;
     }
@@ -362,7 +362,7 @@ const handleVerify = async (req, res) => {
   if (!verification_token) {
     res.status = 400;
     res.end(
-      `Verify request is missing 'verification_token' search param. The verification email is malformed.`,
+      `Verify request is missing 'verification_token' search param. The verification email is malformed.`
     );
     return;
   }
@@ -374,7 +374,7 @@ const handleVerify = async (req, res) => {
   if (!verifier) {
     res.status = 400;
     res.end(
-      `Could not find 'verifier' in the cookie store. Is this the same user agent/browser that started the authorization flow?`,
+      `Could not find 'verifier' in the cookie store. Is this the same user agent/browser that started the authorization flow?`
     );
     return;
   }
@@ -422,7 +422,13 @@ const handleVerify = async (req, res) => {
   res.end();
 };
 
-async function handleSendPasswordResetEmail(req, res) {
+/**
+ * Request a password reset for an email.
+ * 
+ * @param {Request} req 
+ * @param {Response} res 
+ */
+const handleSendPasswordResetEmail = async (req, res) => {
   let body = "";
   req.on("data", (chunk) => {
     body += chunk.toString();
@@ -461,9 +467,15 @@ async function handleSendPasswordResetEmail(req, res) {
     });
     res.end(`Reset email sent to '${email_sent}'`);
   });
-}
+};
 
-async function handleUiResetPassword(req, res) {
+/**
+ * Render a simple reset password UI
+ * 
+ * @param {Request} req 
+ * @param {Response} res 
+ */
+const handleUiResetPassword = async (req, res) => {
   const url = new URL(req.url);
   const reset_token = url.searchParams.get("reset_token");
   res.writeHead(200, { "Content-Type": "text/html" });
@@ -472,15 +484,24 @@ async function handleUiResetPassword(req, res) {
       <body>
         <form method="POST" action="http://localhost:${SERVER_PORT}/auth/reset-password">
           <input type="hidden" name="reset_token" value="${reset_token}">
-          <input type="password" name="password" required>
+          <label>
+            New password: 
+            <input type="password" name="password" required>
+          </label>
           <button type="submit">Reset Password</button>
         </form>
       </body>
     </html>
   `);
-}
+};
 
-async function handleResetPassword(req, res) {
+/**
+ * Send new password with reset token to EdgeDB Auth.
+ * 
+ * @param {Request} req 
+ * @param {Response} res 
+ */
+const handleResetPassword = async (req, res) => {
   let body = "";
   req.on("data", (chunk) => {
     body += chunk.toString();
@@ -489,15 +510,21 @@ async function handleResetPassword(req, res) {
     const { reset_token, password } = JSON.parse(body);
     if (!reset_token || !password) {
       res.status = 400;
-      res.end(`Request body malformed. Expected JSON body with 'reset_token' and 'password' keys, but got: ${body}`);
+      res.end(
+        `Request body malformed. Expected JSON body with 'reset_token' and 'password' keys, but got: ${body}`
+      );
       return;
     }
     const provider = "builtin::local_emailpassword";
     const cookies = req.headers.cookie.split("; ");
-    const verifier = cookies.find((cookie) => cookie.startsWith("edgedb-pkce-verifier=")).split("=")[1];
+    const verifier = cookies
+      .find((cookie) => cookie.startsWith("edgedb-pkce-verifier="))
+      .split("=")[1];
     if (!verifier) {
       res.status = 400;
-      res.end(`Could not find 'verifier' in the cookie store. Is this the same user agent/browser that started the authorization flow?`);
+      res.end(
+        `Could not find 'verifier' in the cookie store. Is this the same user agent/browser that started the authorization flow?`
+      );
       return;
     }
     const resetUrl = new URL("reset-password", EDGEDB_AUTH_BASE_URL);
@@ -537,10 +564,7 @@ async function handleResetPassword(req, res) {
     });
     res.end();
   });
-}
-
-
-
+};
 
 server.listen(SERVER_PORT, () => {
   console.log(`HTTP server listening on port ${SERVER_PORT}...`);

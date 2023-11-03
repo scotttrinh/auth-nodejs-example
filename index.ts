@@ -380,6 +380,9 @@ async function handleSendPasswordResetEmail(req: Request) {
   });
 }
 
+/**
+ * Render a simple reset password UI
+ */
 async function handleUiResetPassword(req: Request) {
   const url = new URL(req.url);
   const reset_token = url.searchParams.get("reset_token");
@@ -389,7 +392,10 @@ async function handleUiResetPassword(req: Request) {
       <body>
         <form method="POST" action="http://localhost:${SERVER_PORT}/auth/reset-password">
           <input type="hidden" name="reset_token" value="${reset_token}">
-          <input type="password" name="password" required>
+          <label>
+            New password: 
+            <input type="password" name="password" required>
+          </label>
           <button type="submit">Reset Password</button>
         </form>
       </body>
