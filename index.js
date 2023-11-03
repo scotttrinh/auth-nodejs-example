@@ -155,7 +155,7 @@ const handleAuthorize = async (req, res) => {
   redirectUrl.searchParams.set("challenge", pkce.challenge);
   redirectUrl.searchParams.set(
     "redirect_to",
-    `http://localhost:{PORT}/auth/callack`,
+    `http://localhost:${SERVER_PORT}/auth/callack`,
   );
 
   res.writeHead(301, {
