@@ -40,6 +40,7 @@
           (pkgs.nodejs_20.override {enableNpm = false;})
           pkgs.nodePackages.npm
           edgedb-dev
+          pkgs.httpie
         ];
 
         shellHook = ''
