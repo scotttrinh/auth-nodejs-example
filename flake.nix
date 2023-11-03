@@ -41,6 +41,7 @@
           pkgs.nodePackages.npm
           edgedb-dev
           pkgs.httpie
+          pkgs.bun
         ];
 
         shellHook = ''
