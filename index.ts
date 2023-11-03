@@ -21,6 +21,10 @@ Bun.serve({
         return await handleUiSignUp(req);
       }
 
+      case "/auth/ui/reset-password": {
+        return await handleUiResetPassword(req);
+      }
+
       case "/auth/authorize": {
         return await handleAuthorize(req);
       }
@@ -39,6 +43,14 @@ Bun.serve({
 
       case "/auth/verify": {
         return await handleVerify(req);
+      }
+
+      case "/auth/send-password-reset-email": {
+        return await handleSendPasswordResetEmail(req);
+      }
+
+      case "/auth/reset-password": {
+        return await handleResetPassword(req);
       }
 
       default: {
@@ -96,7 +108,7 @@ async function handleAuthorize(req: Request) {
   if (!provider) {
     return new Response(
       "Must provide a 'provider' value in search parameters",
-      { status: 400 },
+      { status: 400 }
     );
   }
 
@@ -106,7 +118,7 @@ async function handleAuthorize(req: Request) {
   redirectUrl.searchParams.set("challenge", pkce.challenge);
   redirectUrl.searchParams.set(
     "redirect_to",
-    `http://localhost:${SERVER_PORT}/auth/callack`,
+    `http://localhost:${SERVER_PORT}/auth/callback`
   );
 
   return new Response(null, {
@@ -130,7 +142,7 @@ async function handleCallback(req: Request) {
     const error = url.searchParams.get("error");
     return new Response(
       `OAuth callback is missing 'code'. OAuth provider responded with error: ${error}`,
-      { status: 400 },
+      { status: 400 }
     );
   }
 
@@ -141,7 +153,7 @@ async function handleCallback(req: Request) {
   if (!verifier) {
     return new Response(
       `Could not find 'verifier' in the cookie store. Is this the same user agent/browser that started the authorization flow?`,
-      { status: 400 },
+      { status: 400 }
     );
   }
 
@@ -175,7 +187,7 @@ async function handleSignUp(req: Request) {
   if (!email || !password || !provider) {
     return new Response(
       `Request body malformed. Expected JSON body with 'email', 'password', and 'provider' keys, but got: ${body}`,
-      { status: 400 },
+      { status: 400 }
     );
   }
   const pkce = generatePKCE();
@@ -217,7 +229,7 @@ async function handleSignIn(req: Request) {
   if (!email || !password || !provider) {
     return new Response(
       `Request body malformed. Expected JSON body with 'email', 'password', and 'provider' keys, but got: ${body}`,
-      { status: 400 },
+      { status: 400 }
     );
   }
   const pkce = generatePKCE();
@@ -274,7 +286,7 @@ async function handleVerify(req: Request) {
   if (!verification_token) {
     return new Response(
       `Verify request is missing 'verification_token' search param. The verification email is malformed.`,
-      { status: 400 },
+      { status: 400 }
     );
   }
 
@@ -285,7 +297,7 @@ async function handleVerify(req: Request) {
   if (!verifier) {
     return new Response(
       `Could not find 'verifier' in the cookie store. Is this the same user agent/browser that started the authorization flow?`,
-      { status: 400 },
+      { status: 400 }
     );
   }
 
@@ -308,6 +320,141 @@ async function handleVerify(req: Request) {
   }
 
   const { code } = await verifyResponse.json();
+
+  const tokenUrl = new URL("token", EDGEDB_AUTH_BASE_URL);
+  tokenUrl.searchParams.set("code", code);
+  tokenUrl.searchParams.set("verifier", verifier);
+  const tokenResponse = await fetch(tokenUrl.href, {
+    method: "get",
+  });
+
+  if (!tokenResponse.ok) {
+    const text = await tokenResponse.text();
+    return new Response(`Error from the auth server: ${text}`, { status: 400 });
+  }
+
+  const { auth_token } = await tokenResponse.json();
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "set-cookie": `edgedb-auth-token=${auth_token}; HttpOnly; Path=/; Secure; SameSite=Strict`,
+    },
+  });
+}
+
+/**
+ * Request a password reset for an email.
+ */
+async function handleSendPasswordResetEmail(req: Request) {
+  const { email } = await req.json();
+  const reset_url = `http://localhost:${SERVER_PORT}/auth/ui/reset-password`;
+  const provider = "builtin::local_emailpassword";
+  const pkce = generatePKCE();
+
+  const sendResetUrl = new URL("send-reset-email", EDGEDB_AUTH_BASE_URL);
+  const sendResetResponse = await fetch(sendResetUrl.href, {
+    method: "post",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email,
+      provider,
+      reset_url,
+      challenge: pkce.challenge,
+    }),
+  });
+
+  if (!sendResetResponse.ok) {
+    const text = await sendResetResponse.text();
+    return new Response(`Error from auth server: ${text}`, { status: 400 });
+  }
+
+  const { email_sent } = await sendResetResponse.json();
+
+  return new Response(`Reset email sent to '${email_sent}'`, {
+    status: 200,
+    headers: {
+      "set-cookie": `edgedb-pkce-verifier=${pkce.verifier}; HttpOnly; Path=/; Secure; SameSite=Strict`,
+    },
+  });
+}
+
+async function handleUiResetPassword(req: Request) {
+  const url = new URL(req.url);
+  const reset_token = url.searchParams.get("reset_token");
+  return new Response(
+    `
+    <html>
+      <body>
+        <form method="POST" action="http://localhost:${SERVER_PORT}/auth/reset-password">
+          <input type="hidden" name="reset_token" value="${reset_token}">
+          <input type="password" name="password" required>
+          <button type="submit">Reset Password</button>
+        </form>
+      </body>
+    </html>
+  `,
+    {
+      headers: { "Content-Type": "text/html" },
+      status: 200,
+    }
+  );
+}
+
+/**
+ * Send new password with reset token to EdgeDB Auth.
+ */
+async function handleResetPassword(req: Request) {
+  const url = new URL(req.url);
+  const formData = await req.formData();
+  const reset_token = formData.get("reset_token");
+  if (!reset_token) {
+    return new Response(
+      `Reset password request is missing 'reset_token' search param. The reset password email is malformed.`,
+      { status: 400 }
+    );
+  }
+  const password = formData.get("password");
+  if (!password) {
+    return new Response(
+      `Reset password request is missing 'password' search param. The reset password email is malformed.`,
+      { status: 400 }
+    );
+  }
+  const provider = "builtin::local_emailpassword";
+
+  const cookies = req.headers.get("cookie")?.split("; ");
+  const verifier = cookies
+    ?.find((cookie) => cookie.startsWith("edgedb-pkce-verifier="))
+    ?.split("=")[1];
+  if (!verifier) {
+    return new Response(
+      `Could not find 'verifier' in the cookie store. Is this the same user agent/browser that started the authorization flow?`,
+      { status: 400 }
+    );
+  }
+
+  const resetUrl = new URL("reset-password", EDGEDB_AUTH_BASE_URL);
+  const resetResponse = await fetch(resetUrl.href, {
+    method: "post",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      reset_token,
+      provider,
+      resetUrl,
+      password,
+    }),
+  });
+
+  if (!resetResponse.ok) {
+    const text = await resetResponse.text();
+    return new Response(`Error from the auth server: ${text}`, { status: 400 });
+  }
+
+  const { code } = await resetResponse.json();
 
   const tokenUrl = new URL("token", EDGEDB_AUTH_BASE_URL);
   tokenUrl.searchParams.set("code", code);
